@@ -26,7 +26,7 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable {
 
     // Function to initialize
     function initialize(uint256 maxNFTs) public initializer {
-        __ERC721_init("CryptoClashNFT", "CCNFT");
+        __ERC721_init("CryptoClashCat", "CCC");
         __ERC721URIStorage_init();
         _owner = msg.sender;
 
@@ -39,6 +39,10 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable {
         thirdPlaceReward = 250;
     }
 
+    function getNextTokenId() public view returns (uint256) {
+        return _totalSupply + 1;
+    }
+
     // Secure mint function
     function safeMint(address to, string memory uri) public payable {
         require(_totalSupply < _maxNFTs, "Maximum number of NFTs minted");
@@ -49,6 +53,7 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable {
         _setTokenURI(tokenId, uri);
         _incrementTokenId(); // Increment the token ID after minting
     }
+
 
     // Function to choose attack
     function chooseAttack(uint256 tokenId, string memory attack) public {
