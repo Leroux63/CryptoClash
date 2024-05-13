@@ -4,8 +4,9 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "./CryptoClash.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
 
-contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable {
+contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721EnumerableUpgradeable {
     struct NFTData {
         string attack; // The attack chosen by the player (paper, rock, scissors)
         uint256 wins; // The number of wins for this NFT
@@ -28,6 +29,7 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable {
     function initialize(uint256 maxNFTs) public initializer {
         __ERC721_init("CryptoClashCat", "CCC");
         __ERC721URIStorage_init();
+        __ERC721Enumerable_init();
         _owner = msg.sender;
 
         _maxNFTs = maxNFTs; // Set the maximum number of NFTs
@@ -53,7 +55,6 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable {
         _setTokenURI(tokenId, uri);
         _incrementTokenId(); // Increment the token ID after minting
     }
-
 
     // Function to choose attack
     function chooseAttack(uint256 tokenId, string memory attack) public {
@@ -146,4 +147,23 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable {
 
     // Fallback function to receive Ether
     receive() external payable {}
+
+    // Explicit implementation to resolve conflicts
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721URIStorageUpgradeable, ERC721EnumerableUpgradeable) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+
+
+    function tokenURI(uint256 tokenId) public view virtual override(ERC721URIStorageUpgradeable, ERC721Upgradeable) returns (string memory) {
+        return super.tokenURI(tokenId);
+    }
+
+    function _increaseBalance(address account, uint128 amount) internal virtual override(ERC721Upgradeable, ERC721EnumerableUpgradeable) {
+        super._increaseBalance(account, amount);
+    }
+
+    function _update(address to, uint256 tokenId, address auth) internal virtual override(ERC721Upgradeable, ERC721EnumerableUpgradeable) returns (address) {
+        return super._update(to, tokenId, auth);
+    }
 }
