@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*:root {*/
+/*  --foreground-color: #000000;  !* Noir pour le texte *!*/
+/*  --background-start-color: #D6DBDC;  !* Gris très clair pour le début du dégradé *!*/
+/*  --background-end-color: #FFFFFF;  !* Blanc pour la fin du dégradé *!*/
+/*}*/
+
+/*@media (prefers-color-scheme: dark) {*/
+/*  :root {*/
+/*    --foreground-color: #FFFFFF;  !* Blanc pour le texte *!*/
+/*    --background-start-color: #696969;  !* Gris foncé pour le début du dégradé *!*/
+/*    --background-end-color: #C0C0C0;  !* Gris clair pour la fin du dégradé *!*/
+/*  }*/
+/*}*/
+
+/*body {*/
+/*  color: rgb(var(--foreground-color));*/
+/*  background: linear-gradient(*/
+/*          to bottom,*/
+/*          transparent,*/
+/*          var(--background-end-color)*/
+/*  ) var(--background-start-color);*/
+/*}*/

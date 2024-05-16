@@ -1,9 +1,8 @@
-import { Inter } from "next/font/google";
+import { Fira_Code } from 'next/font/google';
 
-const inter = Inter({ subsets: ["latin"] });
-
+const fira = Fira_Code({subsets:["latin"]});
 export default function RootLayout({ children }: { children: React.ReactNode; }) {
   return (
-      <div className={inter.className}>{children}</div>
+      <div className={fira.className}>{children}</div>
   );
 }
