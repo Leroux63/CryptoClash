@@ -34,6 +34,7 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
     event FundsWithdrawn(address owner, uint amount);
     event BattleStarted(uint256 indexed battleId, address indexed player1, address indexed player2, uint256 tokenId1, uint256 tokenId2);
     event AttackSubmitted(uint256 indexed battleId, address indexed player, string attack);
+    event BattleResolved(uint256 indexed battleId, address winner, uint256 winnerTokenId, address loser, uint256 loserTokenId);
 
     uint256 public firstPlaceReward;
     uint256 public secondPlaceReward;
@@ -125,8 +126,14 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
         }
     }
 
+
+
     function resolveBattle(uint256 battleId) internal {
         Battle storage battle = _battles[battleId];
+        address winner;
+        uint256 winnerTokenId;
+        address loser;
+        uint256 loserTokenId;
 
         if (
             (keccak256(abi.encodePacked(battle.attack1)) == keccak256(abi.encodePacked("paper")) &&
@@ -136,6 +143,10 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
             (keccak256(abi.encodePacked(battle.attack1)) == keccak256(abi.encodePacked("scissors")) &&
                 keccak256(abi.encodePacked(battle.attack2)) == keccak256(abi.encodePacked("paper")))
         ) {
+            winner = battle.player1;
+            winnerTokenId = battle.tokenId1;
+            loser = battle.player2;
+            loserTokenId = battle.tokenId2;
             _nftData[battle.tokenId1].wins++;
         } else if (
             (keccak256(abi.encodePacked(battle.attack2)) == keccak256(abi.encodePacked("paper")) &&
@@ -145,9 +156,21 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
             (keccak256(abi.encodePacked(battle.attack2)) == keccak256(abi.encodePacked("scissors")) &&
                 keccak256(abi.encodePacked(battle.attack1)) == keccak256(abi.encodePacked("paper")))
         ) {
+            winner = battle.player2;
+            winnerTokenId = battle.tokenId2;
+            loser = battle.player1;
+            loserTokenId = battle.tokenId1;
             _nftData[battle.tokenId2].wins++;
+        } else {
+            winner = address(0);
+            winnerTokenId = 0;
+            loser = address(0);
+            loserTokenId = 0;
         }
+
+        emit BattleResolved(battleId, winner, winnerTokenId, loser, loserTokenId);
     }
+
 
     function getBattle(uint256 battleId) public view returns (Battle memory) {
         return _battles[battleId];

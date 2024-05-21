@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
-import { ethers } from "ethers";
+import React, { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
 import { create } from 'ipfs-http-client';
-import styles from '../styles/NFTCard.module.css';
-import Navbar from "@/component/Navbar";
+import Navbar from '@/components/Navbar';
+import NFTCard from '@/components/NFTCard';
+import Battle from '@/components/Battle';
+import NFTDetailsModal from '@/components/NFTDetailsModal';
 import ABI from '../../public/CryptoClash.sol/CryptoClash.json';
 import NFT_ABI from '../../public/CryptoClashCat.sol/CryptoClashCat.json';
 
@@ -13,16 +15,6 @@ interface NFT {
     description: string;
 }
 
-interface BattleStartedEventArgs {
-    battleId: number;
-    player1: string;
-    player2: string;
-    tokenId1: number;
-    tokenId2: number;
-    player1Played: boolean;
-    player2Played: boolean;
-}
-
 const client = create({ url: 'http://127.0.0.1:5001' });
 
 export default function Home() {
@@ -31,12 +23,15 @@ export default function Home() {
     const [isConnected, setIsConnected] = useState(false);
     const [nfts, setNfts] = useState<NFT[]>([]);
     const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null);
+    const [opponentNFT, setOpponentNFT] = useState<NFT | null>(null);
+    const [opponentNFTs, setOpponentNFTs] = useState<NFT[]>([]);
     const [attack, setAttack] = useState("");
     const [result, setResult] = useState<string | null>(null);
     const [opponents, setOpponents] = useState<string[]>([]);
     const [battleId, setBattleId] = useState<number | null>(null);
     const [pendingBattles, setPendingBattles] = useState<any[]>([]);
     const [completedBattles, setCompletedBattles] = useState<any[]>([]);
+    const [showModal, setShowModal] = useState(false);
 
     useEffect(() => {
         if (isConnected) {
@@ -48,6 +43,21 @@ export default function Home() {
         fetchAllHolders();
     }, []);
 
+    useEffect(() => {
+        if (userAddress) {
+            fetchUserNFTs();
+        }
+    }, [userAddress]);
+
+    useEffect(() => {
+        updateBattleStatus();
+    }, []);
+
+// Log pending and completed battles
+    useEffect(() => {
+        console.log("Pending Battles:", pendingBattles);
+        console.log("Completed Battles:", completedBattles);
+    }, [pendingBattles, completedBattles]);
     async function fetchAllHolders() {
         const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_SEPOLIA_URL_2!);
         const nftContract = new ethers.Contract(process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!, NFT_ABI.abi, provider);
@@ -85,7 +95,6 @@ export default function Home() {
                 setUserAddress(accounts[0]);
                 fetchTokenCount(accounts[0]);
                 setIsConnected(true);
-                fetchNFTs(accounts[0]);
                 checkForPendingBattle();
             } catch (error) {
                 console.error("Error connecting to the wallet:", error);
@@ -136,6 +145,7 @@ export default function Home() {
                         await contract.safeMint(userAddress, uri, { value: ethers.parseEther("0.05") });
                     }
                     console.log("NFT successfully minted!");
+                    fetchUserNFTs();
                 } else {
                     console.error("Failed to mint NFT:", await response.text());
                 }
@@ -180,8 +190,17 @@ export default function Home() {
             }
         }
 
-        setNfts(items);
         return items;
+    }
+
+    async function fetchUserNFTs() {
+        const items = await fetchNFTs(userAddress);
+        setNfts(items);
+    }
+
+    async function fetchOpponentNFTs(opponentAddress: string) {
+        const items = await fetchNFTs(opponentAddress);
+        setOpponentNFTs(items);
     }
 
     async function streamToString(stream: any) {
@@ -194,18 +213,20 @@ export default function Home() {
 
     function selectNFT(nft: NFT) {
         setSelectedNFT(nft);
+        setShowModal(true);
         setResult(null);
     }
 
     async function startBattle() {
         if (selectedNFT && attack && opponents.length > 0) {
             const provider = new ethers.BrowserProvider(window.ethereum);
-            const signer = await provider.getSigner();  // Utiliser await ici
+            const signer = await provider.getSigner();
             const contractAddress = process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!;
             const contract = new ethers.Contract(contractAddress, NFT_ABI.abi, signer);
 
             try {
-                const filteredOpponents = opponents.filter(opponent => opponent !== userAddress);
+                // Filtrer les adversaires pour exclure l'adresse de l'utilisateur actuel
+                const filteredOpponents = opponents.filter(opponent => opponent.toLowerCase() !== userAddress.toLowerCase());
 
                 if (filteredOpponents.length === 0) {
                     setResult("No opponents available.");
@@ -215,22 +236,23 @@ export default function Home() {
                 const randomOpponentAddress = filteredOpponents[Math.floor(Math.random() * filteredOpponents.length)];
                 console.log("Opponent Address:", randomOpponentAddress);
 
-                const opponentNFTs = await fetchNFTs(randomOpponentAddress);
-                if (!opponentNFTs || opponentNFTs.length === 0) {
+                await fetchOpponentNFTs(randomOpponentAddress);
+                if (opponentNFTs.length === 0) {
                     setResult("No NFTs found for the opponent.");
                     return;
                 }
 
                 const randomOpponentNFT = opponentNFTs[Math.floor(Math.random() * opponentNFTs.length)];
+                setOpponentNFT(randomOpponentNFT);
 
                 await contract.startBattle(selectedNFT.tokenId, randomOpponentNFT.tokenId);
                 const battleCounter = await contract.getBattleCounter();
                 setBattleId(Number(battleCounter));
                 console.log("Battle started with ID:", battleCounter);
 
-                // Soumettre immédiatement l'attaque du joueur 1
                 await contract.submitAttack(battleCounter, selectedNFT.tokenId, attack);
                 setResult(`Your attack has been submitted. Waiting for opponent...`);
+                setShowModal(false);  // Close the modal after starting the battle
             } catch (error) {
                 console.error("Error during the battle:", error);
             }
@@ -239,25 +261,27 @@ export default function Home() {
         }
     }
 
-
-
     async function submitAttack(battleId: number) {
         if (selectedNFT && attack) {
             const provider = new ethers.BrowserProvider(window.ethereum);
-            const signer = await provider.getSigner();  // Utiliser await ici
+            const signer = await provider.getSigner();
             const contractAddress = process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!;
             const contract = new ethers.Contract(contractAddress, NFT_ABI.abi, signer);
 
             try {
-                await contract.submitAttack(battleId, selectedNFT.tokenId, attack);
+                console.log(`Submitting attack for battle ID: ${battleId}, Token ID: ${selectedNFT.tokenId}, Attack: ${attack}`);
+                const tx = await contract.submitAttack(battleId, selectedNFT.tokenId, attack);
+                console.log(`Transaction hash: ${tx.hash}`);
+
+                const receipt = await tx.wait();
+                console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+
                 setResult(`Your attack has been submitted.`);
                 console.log("Attack submitted for battle ID:", battleId);
 
-                // Vérifier l'état de la bataille après la soumission de l'attaque
                 const updatedBattle = await contract.getBattle(battleId);
-                console.log("Updated battle details:", updatedBattle);
+                console.log("Updated battle details after submission:", updatedBattle);
 
-                // Mettre à jour les listes de batailles
                 updateBattleLists(battleId, updatedBattle);
             } catch (error) {
                 console.error("Error submitting attack:", error);
@@ -267,8 +291,11 @@ export default function Home() {
         }
     }
 
-    async function checkBattleStatus() {
-        if (battleId && selectedNFT) {
+
+
+
+    async function checkBattleStatus(battleId: number) {
+        if (battleId) {
             const provider = new ethers.BrowserProvider(window.ethereum);
             const contractAddress = process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!;
             const contract = new ethers.Contract(contractAddress, NFT_ABI.abi, provider);
@@ -276,11 +303,15 @@ export default function Home() {
             try {
                 const battle = await contract.getBattle(battleId);
                 console.log("Checking status for battle ID:", battleId, "Battle details:", battle);
+
                 if (battle.player1Played && battle.player2Played) {
-                    const wins = await contract.getWins(selectedNFT.tokenId);
+                    let wins = 0;
+                    if (selectedNFT) {
+                        wins = await contract.getWins(selectedNFT.tokenId);
+                    }
                     setResult(`Your NFT has won ${wins} times!`);
                     setBattleId(null);
-                    updateBattleLists(battleId, true); // Move battle to completed list
+                    updateBattleLists(battleId, battle);
                 } else {
                     setResult("Waiting for opponent to play...");
                 }
@@ -310,7 +341,7 @@ export default function Home() {
             ]);
 
             const playerBattles = battles.filter((battle: any) => {
-                const eventArgs = battle.args as BattleStartedEventArgs;
+                const eventArgs = battle.args;
                 return (eventArgs && eventArgs.player1 && eventArgs.player1.toLowerCase() === userAddress.toLowerCase()) ||
                     (eventArgs && eventArgs.player2 && eventArgs.player2.toLowerCase() === userAddress.toLowerCase());
             });
@@ -331,9 +362,13 @@ export default function Home() {
                     }
                 });
 
+                const nft = (battle.args.player1.toLowerCase() === userAddress.toLowerCase()) ? battle.args.tokenId1 : battle.args.tokenId2;
+                console.log(`Battle ID: ${battleId}, NFT in battle: ${nft}`);
+
                 return {
                     event: battle,
                     details: mutableBattleDetails,
+                    nft
                 };
             }));
 
@@ -353,24 +388,54 @@ export default function Home() {
             console.error("Error checking for pending battles:", error);
         }
     }
+    async function updateBattleStatus() {
+        if (battleId) {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const contractAddress = process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!;
+            const contract = new ethers.Contract(contractAddress, NFT_ABI.abi, provider);
+
+            try {
+                const battle = await contract.getBattle(battleId);
+                console.log("Checking status for battle ID:", battleId, "Battle details:", battle);
+
+                if (battle.player1Played && battle.player2Played) {
+                    let wins = 0;
+                    if (selectedNFT) {
+                        wins = await contract.getWins(selectedNFT.tokenId);
+                    }
+                    setResult(`Your NFT has won ${wins} times!`);
+                    setBattleId(null);
+                    updateBattleLists(battleId, battle);
+                } else {
+                    setResult("Waiting for opponent to play...");
+                }
+            } catch (error) {
+                console.error("Error checking battle status:", error);
+            }
+        } else {
+            setResult("No battle in progress or NFT not selected.");
+        }
+    }
 
 
     function updateBattleLists(battleId: number, updatedBattle: any) {
         const isCompleted = updatedBattle.player1Played && updatedBattle.player2Played;
+        console.log(`Updating battle lists for Battle ID: ${battleId}, Is Completed: ${isCompleted}`);
 
         if (isCompleted) {
-            // Retirer la bataille des batailles en attente
+            console.log(`Battle ID ${battleId} is completed.`);
             const updatedPendingBattles = pendingBattles.filter(battle => battle.event.args.battleId.toString() !== battleId.toString());
-
-            // Ajouter la bataille aux batailles terminées
             const completedBattle = pendingBattles.find(battle => battle.event.args.battleId.toString() === battleId.toString());
             if (completedBattle) {
-                setCompletedBattles([...completedBattles, { ...completedBattle, details: updatedBattle }]);
+                console.log(`Moving Battle ID ${battleId} to completed battles.`);
+                setCompletedBattles(prevCompletedBattles => [...prevCompletedBattles, { ...completedBattle, details: updatedBattle }]);
             }
-
             setPendingBattles(updatedPendingBattles);
+        } else {
+            console.log(`Battle ID ${battleId} is still pending.`);
         }
     }
+
     return (
         <main className="flex flex-col min-h-screen">
             <Navbar isConnected={isConnected} handleWalletConnection={handleWalletConnection} />
@@ -384,65 +449,29 @@ export default function Home() {
                 )}
                 <div className="grid grid-cols-3 gap-4 mt-4" style={{ display: 'flex', flexWrap: 'wrap' }}>
                     {nfts.map((nft, index) => (
-                        <div key={index} className={`${styles.card}`} onClick={() => selectNFT(nft)}>
-                            <div className="card mx-2 my-2">
-                                <div className="img_card" style={{ position: 'relative' }}>
-                                    <img
-                                        src={nft.image}
-                                        alt={nft.name}
-                                        style={{
-                                            width: '160px',
-                                            height: '210px',
-                                            borderRadius: '50px',
-                                            opacity: '0.8',
-                                            objectFit: 'cover',
-                                        }}
-                                    />
-                                    <div style={{
-                                        position: 'absolute',
-                                        top: '50%',
-                                        left: '50%',
-                                        transform: 'translate(-50%, -50%)',
-                                        color: 'white',
-                                        fontSize: '16px',
-                                        fontWeight: 'bold',
-                                        textShadow: '1px 1px 2px black'
-                                    }}>
-                                        {nft.name}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <NFTCard key={index} nft={nft} onClick={() => selectNFT(nft)} highlight={pendingBattles.some(battle => battle.nft === nft.tokenId)} />
                     ))}
                 </div>
-                {selectedNFT && (
-                    <div className="mt-4">
-                        <h2>NFT Details</h2>
-                        <p>Name: {selectedNFT.name}</p>
-                        <p>Description: {selectedNFT.description}</p>
-                        <div className="mt-2">
-                            <label>
-                                Choose Attack:
-                                <select value={attack} onChange={(e) => setAttack(e.target.value)}>
-                                    <option value="">Select</option>
-                                    <option value="rock">Rock</option>
-                                    <option value="paper">Paper</option>
-                                    <option value="scissors">Scissors</option>
-                                </select>
-                            </label>
-                        </div>
-                        <button onClick={startBattle}
-                                className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-                            Start Battle
-                        </button>
-                        {result && <p className="mt-4">{result}</p>}
-                        {battleId && (
-                            <button onClick={checkBattleStatus}
-                                    className="mt-4 px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">
-                                Check Battle Status
-                            </button>
-                        )}
+                {selectedNFT && showModal && (
+                    <NFTDetailsModal
+                        nft={selectedNFT}
+                        attack={attack}
+                        setAttack={setAttack}
+                        startBattle={startBattle}
+                        closeModal={() => setShowModal(false)}
+                    />
+                )}
+                {selectedNFT && opponentNFT && (
+                    <div className="flex justify-between mt-8">
+                        <NFTCard nft={selectedNFT} onClick={() => { }} />
+                        <NFTCard nft={opponentNFT} onClick={() => { }} />
                     </div>
+                )}
+
+                {battleId && (
+                    <button onClick={() => checkBattleStatus(battleId)} className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                        Check Battle Status
+                    </button>
                 )}
                 {pendingBattles.length > 0 && (
                     <div className="mt-4">

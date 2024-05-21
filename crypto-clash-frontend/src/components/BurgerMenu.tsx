@@ -1,3 +1,4 @@
+// BurgerMenu.tsx
 import { Dispatch, SetStateAction } from 'react';
 import styles from '../styles/BurgerMenu.module.css'; // Assurez-vous que le chemin d'accès est correct
 
