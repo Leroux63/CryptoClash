@@ -1,5 +1,4 @@
-/* styles/Modal.module.css */
-.modal-overlay {
+.modalOverlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -9,27 +8,98 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    z-index: 1000;
 }
 
-.modal-content {
+.modalContent {
     background: white;
     padding: 20px;
     border-radius: 10px;
     width: 90%;
     max-width: 500px;
     position: relative;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
-.close-button {
-    position: absolute;
-    top: 10px;
-    right: 10px;
+.modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.modalHeader h2 {
+    flex: 1;
+    text-align: center;
+    margin: 0;
+}
+
+.closeButton {
     background: red;
     color: white;
     border: none;
     border-radius: 50%;
     width: 30px;
     height: 30px;
-    font-size: 16px;
+    font-size: 24px;
+    line-height: 30px;
+    text-align: center;
     cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.closeButton:hover {
+    background: darkred;
+}
+
+.nftAttributes {
+    margin-bottom: 20px;
+}
+
+.nftAttributes p {
+    margin: 5px 0;
+}
+
+.winsBadge {
+    background: #4caf50;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 14px;
+}
+
+.centeredContent {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.attackSelection {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 20px;
+}
+
+.attackImage {
+    width: 80px;
+    height: 80px;
+    cursor: pointer;
+    transition: transform 0.2s, border 0.2s;
+    border-radius: 10px; /* Rounded corners for images */
+    border: 2px solid transparent; /* Default border */
+}
+
+.attackImage:hover {
+    transform: scale(1.1);
+}
+
+.selected {
+    border: 3px solid #4caf50;
+    border-radius: 10px; /* Rounded corners for selected images */
+}
+
+.startBattleButton:disabled {
+    background: gray;
+    cursor: not-allowed;
 }

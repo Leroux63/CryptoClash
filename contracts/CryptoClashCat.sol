@@ -11,6 +11,7 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
         string attack;
         uint256 wins;
     }
+    enum BattleStatus { Pending, Completed }
 
     struct Battle {
         address player1;
@@ -21,6 +22,7 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
         string attack2;
         bool player1Played;
         bool player2Played;
+        BattleStatus status;
     }
 
     mapping(uint256 => NFTData) private _nftData;
@@ -79,10 +81,16 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
         _nftData[tokenId].attack = attack;
     }
 
-    function startBattle(uint256 tokenId1, uint256 tokenId2) public {
+    function startBattle(uint256 tokenId1, uint256 tokenId2, string memory attack1) public {
         require(ownerOf(tokenId1) == msg.sender, "You are not the owner of this NFT");
         address owner2 = ownerOf(tokenId2);
         require(owner2 != address(0), "Opponent NFT does not exist");
+        require(
+            keccak256(abi.encodePacked(attack1)) == keccak256(abi.encodePacked("paper")) ||
+            keccak256(abi.encodePacked(attack1)) == keccak256(abi.encodePacked("rock")) ||
+            keccak256(abi.encodePacked(attack1)) == keccak256(abi.encodePacked("scissors")),
+            "Invalid attack, must be 'paper', 'rock', or 'scissors'"
+        );
 
         _battleCounter++;
         _battles[_battleCounter] = Battle({
@@ -90,18 +98,21 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
             player2: owner2,
             tokenId1: tokenId1,
             tokenId2: tokenId2,
-            attack1: "",
+            attack1: attack1,
             attack2: "",
-            player1Played: false,
-            player2Played: false
+            player1Played: true,
+            player2Played: false,
+            status: BattleStatus.Pending
         });
 
         emit BattleStarted(_battleCounter, msg.sender, owner2, tokenId1, tokenId2);
+        emit AttackSubmitted(_battleCounter, msg.sender, attack1);
     }
 
     function submitAttack(uint256 battleId, uint256 tokenId, string memory attack) public {
         Battle storage battle = _battles[battleId];
-        require(battle.player1 == msg.sender || battle.player2 == msg.sender, "You are not a player in this battle");
+        require(battle.status == BattleStatus.Pending, "Battle is already completed");
+        require(battle.player2 == msg.sender && battle.tokenId2 == tokenId, "You are not the second player or wrong tokenId");
         require(
             keccak256(abi.encodePacked(attack)) == keccak256(abi.encodePacked("paper")) ||
             keccak256(abi.encodePacked(attack)) == keccak256(abi.encodePacked("rock")) ||
@@ -109,26 +120,17 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
             "Invalid attack"
         );
 
-        if (battle.player1 == msg.sender && battle.tokenId1 == tokenId) {
-            battle.attack1 = attack;
-            battle.player1Played = true;
-        } else if (battle.player2 == msg.sender && battle.tokenId2 == tokenId) {
-            battle.attack2 = attack;
-            battle.player2Played = true;
-        } else {
-            revert("You are not a player in this battle or wrong tokenId");
-        }
+        battle.attack2 = attack;
+        battle.player2Played = true;
 
         emit AttackSubmitted(battleId, msg.sender, attack);
 
         if (battle.player1Played && battle.player2Played) {
-            resolveBattle(battleId);
+            _resolveBattle(battleId);
         }
     }
 
-
-
-    function resolveBattle(uint256 battleId) internal {
+    function _resolveBattle(uint256 battleId) internal {
         Battle storage battle = _battles[battleId];
         address winner;
         uint256 winnerTokenId;
@@ -167,6 +169,8 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
             loser = address(0);
             loserTokenId = 0;
         }
+
+        battle.status = BattleStatus.Completed;
 
         emit BattleResolved(battleId, winner, winnerTokenId, loser, loserTokenId);
     }

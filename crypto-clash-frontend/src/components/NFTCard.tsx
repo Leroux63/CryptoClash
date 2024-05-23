@@ -1,4 +1,3 @@
-// NFTCard.tsx
 import React from 'react';
 import styles from '../styles/NFTCard.module.css';
 
@@ -12,7 +11,7 @@ interface NFT {
 interface NFTCardProps {
     nft: NFT;
     onClick: () => void;
-    highlight?: boolean; // ajout de la prop highlight
+    highlight?: boolean;
 }
 
 const NFTCard: React.FC<NFTCardProps> = ({ nft, onClick, highlight = false }) => {

@@ -1,0 +1,22 @@
+.attackSelection {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 10px;
+}
+
+.attackImage {
+    width: 60px;
+    height: 60px;
+    cursor: pointer;
+    transition: transform 0.2s, border 0.2s;
+    border-radius: 10px;
+    border: 2px solid transparent;
+}
+
+.attackImage:hover {
+    transform: scale(1.1);
+}
+
+.selected {
+    border: 3px solid #4caf50;
+}

@@ -1,4 +1,3 @@
-// Battle.tsx
 import React from 'react';
 
 interface NFT {
