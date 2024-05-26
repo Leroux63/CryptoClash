@@ -6,30 +6,30 @@ async function main() {
         const [deployer] = await ethers.getSigners();
         console.log("Deploying contracts with the account:", deployer.address);
 
-        // Assurez-vous que l'adresse du contrat ERC20 est définie dans votre fichier .env
+
         const cryptoClashTokenAddress = process.env.TOKEN_CONTRACT_ADDRESS;
         if (!cryptoClashTokenAddress) {
             throw new Error("TOKEN_CONTRACT_ADDRESS is not set in the .env file");
         }
 
-        // Déployer le contrat ERC721
+
         const CryptoClashCat = await ethers.getContractFactory(CryptoClashCatArtifact.abi, CryptoClashCatArtifact.bytecode);
         const cryptoClashCat = await CryptoClashCat.deploy();
 
         console.log("CryptoClashCat deployed to:", cryptoClashCat.target);
 
-        // Initialiser le contrat ERC721
+
         const maxNfts = 1000;
         const tx = await cryptoClashCat.initialize(maxNfts, { gasLimit: 3000000 });
         await tx.wait();
         console.log("Contract initialized with maxNFTs set to:", maxNfts);
 
-        // Configurer l'adresse du contrat ERC20 dans le contrat ERC721
+
         const setTokenTx = await cryptoClashCat.setCryptoClashToken(cryptoClashTokenAddress);
         await setTokenTx.wait();
         console.log("Set ERC20 token address in the ERC721 contract.");
 
-        // Approuver le contrat ERC721 pour dépenser les jetons ERC20
+
         const cryptoClash = new ethers.Contract(cryptoClashTokenAddress, [
             "function approve(address spender, uint256 amount) public returns (bool)",
         ], deployer);
