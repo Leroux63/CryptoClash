@@ -3,8 +3,8 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "./CryptoClash.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721EnumerableUpgradeable {
     struct NFTData {
@@ -42,6 +42,8 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
     uint256 public secondPlaceReward;
     uint256 public thirdPlaceReward;
 
+    IERC20 private _cryptoClashToken;
+
     function initialize(uint256 maxNFTs) public initializer {
         __ERC721_init("CryptoClashCat", "CCC");
         __ERC721URIStorage_init();
@@ -51,9 +53,22 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
         _maxNFTs = maxNFTs;
         _totalSupply = 0;
 
-        firstPlaceReward = 1000;
-        secondPlaceReward = 500;
-        thirdPlaceReward = 250;
+        firstPlaceReward = 1000 * 10 ** 18;
+        secondPlaceReward = 500 * 10 ** 18;
+        thirdPlaceReward = 250 * 10 ** 18;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == _owner, "Caller is not the owner");
+        _;
+    }
+
+    function setCryptoClashToken(address cryptoClashTokenAddress) external onlyOwner {
+        _cryptoClashToken = IERC20(cryptoClashTokenAddress);
+    }
+
+    function owner() public view returns (address) {
+        return _owner;
     }
 
     function getNextTokenId() public view returns (uint256) {
@@ -175,7 +190,6 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
         emit BattleResolved(battleId, winner, winnerTokenId, loser, loserTokenId);
     }
 
-
     function getBattle(uint256 battleId) public view returns (Battle memory) {
         return _battles[battleId];
     }
@@ -188,11 +202,9 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
         return _battleCounter;
     }
 
-    function rewardTopNFTs(address[] memory topNFTs, address cryptoClashContract) external {
-        require(msg.sender == _owner, "Only the owner can allocate rewards");
+    function rewardTopNFTs(address[] memory topNFTs) external onlyOwner {
         require(topNFTs.length <= 3, "Cannot reward more than 3 NFTs");
 
-        CryptoClash cryptoClash = CryptoClash(cryptoClashContract);
         uint256[] memory rewardAmounts = new uint256[](3);
         rewardAmounts[0] = firstPlaceReward;
         rewardAmounts[1] = secondPlaceReward;
@@ -200,15 +212,11 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
 
         for (uint256 i = 0; i < topNFTs.length; i++) {
             require(topNFTs[i] != address(0), "Invalid address");
-            cryptoClash.approveSpending(topNFTs[i], rewardAmounts[i]);
-        }
 
-        for (uint256 i = 0; i < topNFTs.length; i++) {
-            require(topNFTs[i] != address(0), "Invalid address");
-            CryptoClash cryptoClashInstance = CryptoClash(topNFTs[i]);
-            cryptoClashInstance.mint(topNFTs[i], rewardAmounts[i]);
+            require(_cryptoClashToken.transferFrom(owner(), topNFTs[i], rewardAmounts[i]), "Token transfer failed");
         }
     }
+
 
     function _incrementTokenId() internal {
         _totalSupply++;
@@ -218,10 +226,9 @@ contract CryptoClashCat is Initializable, ERC721URIStorageUpgradeable, ERC721Enu
         return _totalSupply + 1;
     }
 
-    function withdraw() public {
-        require(msg.sender == _owner, "Only the owner can withdraw funds");
+    function withdraw() public onlyOwner {
         uint256 amount = address(this).balance;
-        (bool success,) = _owner.call{value: amount}("");
+        (bool success, ) = _owner.call{value: amount}("");
         require(success, "Failed to withdraw funds");
         emit FundsWithdrawn(_owner, amount);
     }

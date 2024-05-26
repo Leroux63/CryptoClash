@@ -25,4 +25,9 @@ contract CryptoClash is ERC20 {
     function approveSpending(address spender, uint256 amount) external onlyOwner {
         _approve(owner, spender, amount);
     }
+
+    function getAllowance(address _owner, address spender) external view returns (uint256) {
+        return allowance(_owner, spender);
+    }
 }
+

@@ -16,11 +16,13 @@
 /*  }*/
 /*}*/
 
-/*body {*/
-/*  color: rgb(var(--foreground-color));*/
-/*  background: linear-gradient(*/
-/*          to bottom,*/
-/*          transparent,*/
-/*          var(--background-end-color)*/
-/*  ) var(--background-start-color);*/
-/*}*/
+body {
+    @apply bg-cover bg-center bg-fixed text-white;
+
+    background-image: url('../../public/images/background.webp');
+}
+
+.container {
+    @apply bg-black bg-opacity-70 p-10 rounded-lg;
+}
+

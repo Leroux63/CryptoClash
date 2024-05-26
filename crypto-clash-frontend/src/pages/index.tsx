@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useEffect, useState} from 'react';
 import {ethers} from 'ethers';
 import {create} from 'ipfs-http-client';
 import Navbar from '@/components/Navbar';
@@ -7,20 +7,14 @@ import NFTDetailsModal from '@/components/NFTDetailsModal';
 import ABI from '../../public/CryptoClash.sol/CryptoClash.json';
 import NFT_ABI from '../../public/CryptoClashCat.sol/CryptoClashCat.json';
 import styles from '../styles/Home.module.css';
-
-interface NFT {
-    tokenId: string;
-    image: string;
-    name: string;
-    description: string;
-}
+import {NFT} from '@/interfaces/NFT';
+import useWallet from "@/hooks/useWallet";
 
 const client = create({url: 'http://127.0.0.1:5001'});
 
 export default function Home() {
+    const {isConnected, userAddress, connectWallet, disconnectWallet, provider} = useWallet()
     const [tokenCount, setTokenCount] = useState("0");
-    const [userAddress, setUserAddress] = useState("");
-    const [isConnected, setIsConnected] = useState(false);
     const [nfts, setNfts] = useState<NFT[]>([]);
     const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null);
     const [battleNFTs, setBattleNFTs] = useState<{ [key: string]: NFT | null }>({});
@@ -32,11 +26,15 @@ export default function Home() {
     const [pendingBattles, setPendingBattles] = useState<any[]>([]);
     const [completedBattles, setCompletedBattles] = useState<any[]>([]);
     const [showModal, setShowModal] = useState(false);
+    const [topNFTs, setTopNFTs] = useState<NFT[]>([]);
+
 
     useEffect(() => {
         if (isConnected) {
             fetchPendingBattles();
             fetchCompletedBattles();
+            fetchTokenCount(userAddress);
+            fetchTopNFTs().then(setTopNFTs);
         }
     }, [isConnected]);
     useEffect(() => {
@@ -76,6 +74,7 @@ export default function Home() {
         }
     }, [pendingBattles, userAddress, nfts]);
 
+
     useEffect(() => {
         fetchAllHolders();
     }, []);
@@ -95,6 +94,7 @@ export default function Home() {
         console.log("Pending Battles:", pendingBattles);
         console.log("Completed Battles:", completedBattles);
     }, [pendingBattles, completedBattles]);
+
 
     async function fetchAllHolders() {
         const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_SEPOLIA_URL_2!);
@@ -124,27 +124,6 @@ export default function Home() {
         } else {
             disconnectWallet();
         }
-    }
-
-    async function connectWallet() {
-        if (window.ethereum) {
-            try {
-                const accounts = await window.ethereum.request({method: 'eth_requestAccounts'});
-                setUserAddress(accounts[0]);
-                fetchTokenCount(accounts[0]);
-                setIsConnected(true);
-            } catch (error) {
-                console.error("Error connecting to the wallet:", error);
-            }
-        } else {
-            alert("Please install a compatible wallet.");
-        }
-    }
-
-    function disconnectWallet() {
-        setUserAddress("");
-        setTokenCount("0");
-        setIsConnected(false);
     }
 
     async function fetchTokenCount(address: string) {
@@ -256,7 +235,6 @@ export default function Home() {
         setShowModal(true);
         setResult(null);
     }
-
     async function startBattle() {
         if (selectedNFT && attack && opponents.length > 0) {
             const provider = new ethers.BrowserProvider(window.ethereum);
@@ -304,7 +282,6 @@ export default function Home() {
         }
     }
 
-
     async function submitAttack(battleId: number) {
         if (selectedNFT && attack) {
             const provider = new ethers.BrowserProvider(window.ethereum);
@@ -327,14 +304,14 @@ export default function Home() {
                 console.log("Updated battle details after submission:", updatedBattle);
 
                 updateBattleLists(battleId, updatedBattle);
+                fetchTopNFTs().then(setTopNFTs);
             } catch (error) {
                 console.error("Error submitting attack:", error);
             }
         } else {
-            alert("Please select an NFT and choose an attack.");
+            alert("Please select an attack.");
         }
     }
-
 
     async function fetchPendingBattles() {
         const provider = new ethers.BrowserProvider(window.ethereum);
@@ -527,6 +504,7 @@ export default function Home() {
             console.log(`Battle ID ${battleId} is still pending.`);
         }
     }
+
     function getBattleWinner(battle: any) {
         if (
             (battle.details[4] === "rock" && battle.details[5] === "scissors") ||
@@ -545,26 +523,192 @@ export default function Home() {
         }
     }
 
+    function truncateAddress(address: string) {
+        if (!address) return "";
+        const start = address.substring(0, 6);
+        const end = address.substring(address.length - 4, address.length);
+        return `${start}...${end}`;
+    }
+
+    async function fetchTopNFTs(): Promise<NFT[]> {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const nftContract = new ethers.Contract(process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!, NFT_ABI.abi, provider);
+
+        try {
+            const totalSupply = await nftContract.totalSupply();
+            const nftWins = [];
+
+            for (let i = 1; i <= totalSupply; i++) {
+                const wins = await fetchNFTWins(i.toString());
+                nftWins.push({ tokenId: i.toString(), wins });
+            }
+
+            nftWins.sort((a, b) => b.wins - a.wins);
+
+            const topNFTTokenIds = nftWins.slice(0, 3).map(nft => nft.tokenId);
+            const topNFTDetails = (await Promise.all(topNFTTokenIds.map(fetchNFTDetails))).filter(nft => nft !== null) as NFT[];
+
+            return topNFTDetails;
+        } catch (error) {
+            console.error("Error fetching top NFTs:", error);
+            return [];
+        }
+    }
+    async function fetchNFTOwners(tokenIds: string[]): Promise<string[]> {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const nftContract = new ethers.Contract(process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!, NFT_ABI.abi, provider);
+
+        const owners = await Promise.all(tokenIds.map(async (tokenId) => {
+            const owner = await nftContract.ownerOf(tokenId);
+            console.log(`Owner of tokenId ${tokenId}: ${owner}`);
+            return owner;
+        }));
+
+        return owners;
+    }
+
+    async function approveERC20Spending() {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+
+        const erc20Contract = new ethers.Contract(process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS!, ABI.abi, signer);
+        const erc721ContractAddress = process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS;
+
+        const amount = ethers.parseUnits("1000000", 18); // Ajustez le montant si nécessaire
+
+        try {
+            const approvalTx = await erc20Contract.approve(erc721ContractAddress, amount);
+            console.log("Approval transaction sent:", approvalTx.hash);
+
+            const receipt = await approvalTx.wait();
+            console.log("Approval transaction confirmed:", receipt);
+        } catch (error) {
+            console.error("Error approving ERC20 spending:", error);
+        }
+    }
+
+    async function rewardTopNFTs() {
+        console.log("Starting rewardTopNFTs function");
+
+        const topNFTs = await fetchTopNFTs();
+        console.log("Fetched top NFTs:", topNFTs);
+
+        if (topNFTs.length > 0) {
+            const topNFTTokenIds = topNFTs.map(nft => nft.tokenId);
+            console.log("Top NFT Token IDs:", topNFTTokenIds);
+
+            const topOwners = await fetchNFTOwners(topNFTTokenIds);
+            console.log("Top Owners to Reward: ", topOwners);
+
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            console.log("Provider initialized");
+
+            const signer = await provider.getSigner();
+            console.log("Signer obtained:", signer);
+
+            const nftContract = new ethers.Contract(process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!, NFT_ABI.abi, signer);
+            console.log("NFT Contract initialized:", nftContract);
+
+            const tokenContractAddress = process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS;
+            console.log("Token Contract Address:", tokenContractAddress);
+
+            try {
+                // Vérifiez que l'appelant est le propriétaire
+                const owner = await nftContract.owner();
+                console.log("Contract owner:", owner);
+
+                const callerAddress = await signer.getAddress();
+                console.log("Caller Address:", callerAddress);
+
+                if (callerAddress.toLowerCase() !== owner.toLowerCase()) {
+                    throw new Error("Caller is not the owner");
+                }
+
+                console.log("Caller is the owner, proceeding with rewarding top NFTs");
+
+                console.log("Calling rewardTopNFTs with:", topOwners);
+                const tx = await nftContract.rewardTopNFTs(topOwners, {
+                    gasLimit: 3000000
+                });
+                console.log("Top NFTs rewarded successfully, transaction:", tx);
+
+                const receipt = await tx.wait();
+                console.log("Transaction receipt:", receipt);
+            } catch (error: any) {
+                console.error("Error rewarding top NFTs:", error);
+                if (error.code) {
+                    console.error("Error code:", error.code);
+                }
+                if (error.message) {
+                    console.error("Error message:", error.message);
+                }
+                if (error.data) {
+                    console.error("Error data:", error.data);
+                }
+            }
+        } else {
+            console.log("No top NFTs to reward");
+        }
+
+        console.log("rewardTopNFTs function execution completed");
+    }
+
     return (
         <main className="flex flex-col min-h-screen">
             <Navbar isConnected={isConnected} handleWalletConnection={handleWalletConnection}/>
             <div className="container mx-auto">
+                {!isConnected && (
+                    <div className="mt-4 text-center">
+                        <p className="text-xl font-bold text-white-900">Connect your wallet</p>
+                    </div>
+                )}
                 {userAddress && <p className="text-xl">Number of tokens: {tokenCount} CCH</p>}
                 {isConnected && (
-                    <button onClick={mintNft}
-                            className="mt-4 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
-                        Mint NFT
-                    </button>
+                    <div className="mt-4">
+                        <div className="relative mb-4">
+                            <div className="flex justify-center">
+                                <h2 className="text-2xl font-bold border-b-4 border-yellow-500 shadow-lg p-4 rounded-lg">
+                                    My NFTs
+                                </h2>
+                            </div>
+                            <div className="absolute right-0 top-0 mt-4 mr-4">
+                                <button onClick={mintNft}
+                                        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                                    Mint NFT
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-4">
+                            {nfts.map((nft, index) => (
+                                <NFTCard key={index} nft={nft} onClick={() => selectNFT(nft)}
+                                         highlight={pendingBattles.some(battle => battle.nft === nft.tokenId)}/>
+                            ))}
+                        </div>
+                        <div className="mt-4">
+                            <div className="flex justify-center mb-4">
+                                <h2 className="text-2xl font-bold border-b-4 border-yellow-500 shadow-lg p-4 rounded-lg">
+                                    Top NFTs
+                                </h2>
+                            </div>
+                            <div className="flex flex-wrap justify-center gap-4">
+                                {topNFTs.map((nft, index) => (
+                                    <div key={index} className="relative">
+                <span className="absolute bottom-0 right-0 bg-yellow-500 text-white font-bold py-2.5 px-2 rounded-br-lg">
+                    N°{index + 1}
+                </span>
+                                        <NFTCard nft={nft} onClick={() => selectNFT(nft)}/>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex justify-center mt-4">
+                            <button onClick={rewardTopNFTs}
+                                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                                Reward Top NFTs
+                            </button>
+                        </div>
+                    </div>
                 )}
-                <div className="text-center">
-                    <h2 className="text-2xl font-bold mb-4">My NFTs</h2>
-                </div>
-                <div className="grid grid-cols-3 gap-4 mt-4" style={{display: 'flex', flexWrap: 'wrap'}}>
-                    {nfts.map((nft, index) => (
-                        <NFTCard key={index} nft={nft} onClick={() => selectNFT(nft)}
-                                 highlight={pendingBattles.some(battle => battle.nft === nft.tokenId)}/>
-                    ))}
-                </div>
                 {selectedNFT && showModal && (
                     <NFTDetailsModal
                         nft={selectedNFT}
@@ -575,154 +719,192 @@ export default function Home() {
                         fetchNFTWins={fetchNFTWins}
                     />
                 )}
-                <div className="mt-4">
-                    <div className="text-center">
-                        <h2 className="text-2xl font-bold mb-4">Pending Battles</h2>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4">
-                        {pendingBattles.map((battle, index) => {
-                            const player1TokenId = battle.details[2].toString();
-                            const player2TokenId = battle.details[3].toString();
+                {isConnected && pendingBattles.length > 0 && (
+                    <div className="mt-4">
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold mb-4 border-b-4 border-yellow-500 shadow-lg p-4 rounded-lg inline-block">
+                                Pending Battles
+                            </h2>
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-4">
+                            {pendingBattles.map((battle, index) => {
+                                const player1TokenId = battle.details[2].toString();
+                                const player2TokenId = battle.details[3].toString();
 
-                            const player1NFT = battleNFTs[player1TokenId];
-                            const player2NFT = battleNFTs[player2TokenId];
+                                const player1NFT = battleNFTs[player1TokenId];
+                                const player2NFT = battleNFTs[player2TokenId];
 
-                            const player1AttackImage = (userAddress.toLowerCase() === battle.event.args.player1.toLowerCase() && battle.details[6])
-                                ? `/images/${battle.details[4]}.webp`
-                                : '/images/question_mark.webp';
-
-                            return (
-                                <div key={index} className="mt-2 border p-4 rounded-lg mx-auto"
-                                     style={{maxWidth: '600px'}}>
-                                    <div className="text-center mb-4">
-                                        <p>Battle n° {battle.event.args.battleId.toString()}</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="text-center">
-                                            <p className="font-bold mb-2">Player 1</p>
-                                            <div className="flex flex-col items-center">
-                                                <div
-                                                    className={userAddress.toLowerCase() === battle.event.args.player1.toLowerCase() ? styles.highlightNft : ""}>
-                                                    {player1NFT && <NFTCard nft={player1NFT} onClick={() => {
-                                                    }}
-                                                                            highlight={userAddress.toLowerCase() === battle.event.args.player1.toLowerCase()}/>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="font-bold mb-2">Player 2</p>
-                                            <div className="flex flex-col items-center">
-                                                <div
-                                                    className={userAddress.toLowerCase() === battle.event.args.player2.toLowerCase() ? styles.highlightNft : ""}>
-                                                    {player2NFT && <NFTCard nft={player2NFT} onClick={() => {
-                                                    }}
-                                                                            highlight={userAddress.toLowerCase() === battle.event.args.player2.toLowerCase()}/>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4 mt-4">
-                                        <div className="text-center mx-auto">
-                                            <img src={player1AttackImage} alt="Player 1 Attack"
-                                                 className={styles.attackImage}/>
-                                        </div>
-                                        <div className="text-center mx-auto">
-                                            {userAddress.toLowerCase() === battle.event.args.player2.toLowerCase() && !battle.details[7] ? (
-                                                <div className={styles.attackSelection}>
-                                                    <img src="/images/rock.webp" alt="Rock"
-                                                         className={`${styles.attackImage} ${attack === 'rock' ? styles.selected : ''}`}
-                                                         onClick={() => setAttack('rock')}/>
-                                                    <img src="/images/paper.webp" alt="Paper"
-                                                         className={`${styles.attackImage} ${attack === 'paper' ? styles.selected : ''}`}
-                                                         onClick={() => setAttack('paper')}/>
-                                                    <img src="/images/scissors.webp" alt="Scissors"
-                                                         className={`${styles.attackImage} ${attack === 'scissors' ? styles.selected : ''}`}
-                                                         onClick={() => setAttack('scissors')}/>
-                                                </div>
-                                            ) : (
-                                                <img src="/images/question_mark.webp" alt="Player 2 Attack"
-                                                     className={styles.attackImage}/>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {userAddress.toLowerCase() === battle.event.args.player2.toLowerCase() && !battle.details[7] && (
-                                        <div className="mt-4 text-center">
-                                            <button onClick={() => submitAttack(battle.event.args.battleId.toString())}
-                                                    className="mt-2 px-4 py-2 bg-red-500 text-white rounded-full hover:bg-red-600">
-                                                Submit
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-
-                <div className="mt-4">
-                    <div className="text-center">
-                        <h2 className="text-2xl font-bold mb-4">Completed Battles</h2>
-                    </div>
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Battle
-                                ID
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player
-                                1
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player
-                                1 NFT
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player
-                                2
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player
-                                2 NFT
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player
-                                1 Attack
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player
-                                2 Attack
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Winner</th>
-                        </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                        {completedBattles
-                            .filter(battle =>
-                                battle.event.args.player1.toLowerCase() === userAddress.toLowerCase() ||
-                                battle.event.args.player2.toLowerCase() === userAddress.toLowerCase()
-                            )
-                            .map((battle, index) => {
-                                const winner = getBattleWinner(battle);
-                                const isUserWinner = winner.toLowerCase() === userAddress.toLowerCase();
-                                const isDraw = winner === "Draw";
-                                const rowClass = isDraw ? "" : isUserWinner ? "bg-green-100" : "bg-red-100";
-                                const highlightClass = "border-4 border-yellow-500";
+                                const player1AttackImage = (userAddress.toLowerCase() === battle.event.args.player1.toLowerCase() && battle.details[6])
+                                    ? `/images/${battle.details[4]}.webp`
+                                    : '/images/question_mark.webp';
 
                                 return (
-                                    <tr key={index} className={rowClass}>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{battle.event.args.battleId.toString()}</td>
-                                        <td className={`px-6 py-4 whitespace-nowrap text-sm text-gray-500 ${battle.event.args.player1.toLowerCase() === userAddress.toLowerCase() ? highlightClass : ''}`}>{battle.event.args.player1}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{battle.details[2].toString()}</td>
-                                        <td className={`px-6 py-4 whitespace-nowrap text-sm text-gray-500 ${battle.event.args.player2.toLowerCase() === userAddress.toLowerCase() ? highlightClass : ''}`}>{battle.event.args.player2}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{battle.details[3].toString()}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{battle.details[4]}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{battle.details[5]}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{winner}</td>
-                                    </tr>
+                                    <div key={index}
+                                         className="mt-2 p-4 rounded-lg shadow-2xl border-white-800 border-2 relative bg-white bg-opacity-20"
+                                         style={{maxWidth: '600px'}}>
+
+                                        <div className="text-center mb-4">
+                                            <h2 className="text-4xl font-bold text-gray-900 relative">
+                                                Battle n° {battle.event.args.battleId.toString()}
+                                                <span
+                                                    className="absolute inset-0 text-gray-400 transform translate-x-1 translate-y-0">Battle n° {battle.event.args.battleId.toString()}</span>
+                                            </h2>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="text-center">
+                                                <p className="font-bold mb-2">Player 1</p>
+                                                <div className="flex flex-col items-center">
+                                                    <div
+                                                        className={userAddress.toLowerCase() === battle.event.args.player1.toLowerCase() ? styles.highlightNft : ""}>
+                                                        {player1NFT && <NFTCard nft={player1NFT} onClick={() => {
+                                                        }}
+                                                                                highlight={userAddress.toLowerCase() === battle.event.args.player1.toLowerCase()}/>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="font-bold mb-2">Player 2</p>
+                                                <div className="flex flex-col items-center">
+                                                    <div
+                                                        className={userAddress.toLowerCase() === battle.event.args.player2.toLowerCase() ? styles.highlightNft : ""}>
+                                                        {player2NFT && <NFTCard nft={player2NFT} onClick={() => {
+                                                        }}
+                                                                                highlight={userAddress.toLowerCase() === battle.event.args.player2.toLowerCase()}/>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4 mt-4">
+                                            <div className="text-center mt-1 mx-auto flex items-center justify-center">
+
+                                                <img src={player1AttackImage} alt="Player 1 Attack"
+                                                     className={styles.attackImage}/>
+                                            </div>
+                                            <div className="text-center mx-auto flex items-center justify-center">
+
+                                                {userAddress.toLowerCase() === battle.event.args.player2.toLowerCase() && !battle.details[7] ? (
+                                                    <div className={`${styles.attackSelection} flex justify-center space-x-4`}>
+                                                        <img src="/images/rock.webp" alt="Rock"
+                                                             className={`${styles.attackImage} ${attack === 'rock' ? styles.selected : ''}`}
+                                                             onClick={() => setAttack(attack === 'rock' ? '' : 'rock')}/>
+                                                        <img src="/images/paper.webp" alt="Paper"
+                                                             className={`${styles.attackImage} ${attack === 'paper' ? styles.selected : ''}`}
+                                                             onClick={() => setAttack(attack === 'paper' ? '' : 'paper')}/>
+                                                        <img src="/images/scissors.webp" alt="Scissors"
+                                                             className={`${styles.attackImage} ${attack === 'scissors' ? styles.selected : ''}`}
+                                                             onClick={() => setAttack(attack === 'scissors' ? '' : 'scissors')}/>
+                                                    </div>
+                                                ) : (
+                                                    <img src="/images/question_mark.webp" alt="Player 2 Attack"
+                                                         className={styles.attackImage}/>
+                                                )}
+
+                                            </div>
+
+                                        </div>
+                                        {userAddress.toLowerCase() === battle.event.args.player2.toLowerCase() && !battle.details[7] && (
+                                            <div className="mt-4 text-center">
+                                                <button
+                                                    onClick={() => submitAttack(battle.event.args.battleId.toString())}
+                                                    className="mt-2 px-4 py-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors duration-300">
+                                                    Submit
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
                                 );
                             })}
-                        </tbody>
-                    </table>
-                </div>
+                        </div>
+                    </div>
+                )}
 
+                {isConnected && completedBattles.length > 0 && (
+                    <div className="mt-4">
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold mb-4 border-b-4 border-yellow-500 shadow-lg p-4 rounded-lg inline-block">
+                                Completed Battles
+                            </h2>
+                        </div>
+                        <table className="min-w-full divide-y divide-gray-200 bg-white bg-opacity-10">
+
+                            <thead className="bg-gray-50 bg-opacity-10">
+                            <tr>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-white-800 uppercase tracking-wider">Battle
+                                    ID
+                                </th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-white-800 uppercase tracking-wider">Player
+                                    1
+                                </th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-white-800 uppercase tracking-wider">Player
+                                    1 NFT
+                                </th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-white-800 uppercase tracking-wider">Player
+                                    2
+                                </th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-white-800 uppercase tracking-wider">Player
+                                    2 NFT
+                                </th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-white-800 uppercase tracking-wider">Player
+                                    1 Attack
+                                </th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-white-800 uppercase tracking-wider">Player
+                                    2 Attack
+                                </th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-white-800 uppercase tracking-wider">Winner
+                                    NFT
+                                </th>
+                            </tr>
+                            </thead>
+                            <tbody className="bg-white text-center divide-y divide-gray-200 bg-opacity-50">
+                            {completedBattles
+                                .filter(battle =>
+                                    battle.event.args.player1.toLowerCase() === userAddress.toLowerCase() ||
+                                    battle.event.args.player2.toLowerCase() === userAddress.toLowerCase()
+                                )
+                                .map((battle, index) => {
+                                    const winner = getBattleWinner(battle);
+                                    const isUserWinner = winner.toLowerCase() === userAddress.toLowerCase();
+                                    const isDraw = winner === "Draw";
+                                    const rowClass = isDraw ? "" : isUserWinner ? "bg-green-100 bg-opacity-70" : "bg-red-100 bg-opacity-70";
+                                    const highlightStyle = {
+                                        border: '2px solid black',
+                                        padding: '2px 4px',
+                                        borderRadius: '4px',
+                                        display: 'inline-block'
+                                    };
+                                    const winningNFT = isDraw ? "Draw" : winner === battle.event.args.player1 ? battle.details[2].toString() : battle.details[3].toString();
+
+                                    return (
+                                        <tr key={index} className={rowClass}>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{battle.event.args.battleId.toString()}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                            <span
+                                style={battle.event.args.player1.toLowerCase() === userAddress.toLowerCase() ? highlightStyle : {}}>
+                                {truncateAddress(battle.event.args.player1)}
+                            </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{battle.details[2].toString()}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                            <span
+                                style={battle.event.args.player2.toLowerCase() === userAddress.toLowerCase() ? highlightStyle : {}}>
+                                {truncateAddress(battle.event.args.player2)}
+                            </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{battle.details[3].toString()}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{battle.details[4]}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{battle.details[5]}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{winningNFT}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
 
             </div>
         </main>
     );
+
 }

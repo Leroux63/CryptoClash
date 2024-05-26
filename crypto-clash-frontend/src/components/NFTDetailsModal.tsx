@@ -1,13 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import NFTCard from './NFTCard';
 import styles from '../styles/Modal.module.css';
-
-interface NFT {
-    tokenId: string;
-    image: string;
-    name: string;
-    description: string;
-}
+import {NFT} from '@/interfaces/NFT';
 
 interface NFTDetailsModalProps {
     nft: NFT;
@@ -36,6 +30,7 @@ const NFTDetailsModal: React.FC<NFTDetailsModalProps> = ({ nft, attack, setAttac
         setAttack(attack);
     };
 
+
     const handleStartBattle = () => {
         if (!selectedAttack) {
             alert("Please select an attack before starting the battle.");
@@ -48,11 +43,16 @@ const NFTDetailsModal: React.FC<NFTDetailsModalProps> = ({ nft, attack, setAttac
         <div className={styles.modalOverlay} onClick={closeModal}>
             <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                 <div className={styles.modalHeader}>
-                    <h2>NFT Details</h2>
+                    <h2 className="text-4xl font-bold text-white relative">
+                        NFT Details
+                        <span className="absolute inset-0 text-gray-700 transform translate-x-1 translate-y-1 blur-sm">NFT Details</span>
+                    </h2>
                     <button className={styles.closeButton} onClick={closeModal}>×</button>
                 </div>
+
                 <div className={styles.centeredContent}>
-                    <NFTCard nft={nft} onClick={() => {}} />
+                    <NFTCard nft={nft} onClick={() => {
+                    }}/>
                 </div>
                 <div className={styles.nftAttributes}>
                     <p><strong>Name:</strong> {nft.name}</p>
@@ -80,7 +80,8 @@ const NFTDetailsModal: React.FC<NFTDetailsModalProps> = ({ nft, attack, setAttac
                     />
                 </div>
                 <div className={styles.centeredContent}>
-                    <button onClick={handleStartBattle} className={`mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${styles.startBattleButton}`}>
+                    <button onClick={handleStartBattle}
+                            className={`mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 ${styles.startBattleButton}`}>
                         Start Battle
                     </button>
                 </div>

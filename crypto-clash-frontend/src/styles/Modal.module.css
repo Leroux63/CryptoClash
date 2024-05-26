@@ -12,7 +12,9 @@
 }
 
 .modalContent {
-    background: white;
+    background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('../../public/images/modal.webp');
+    background-size: cover;
+    background-position: center;
     padding: 20px;
     border-radius: 10px;
     width: 90%;
@@ -95,8 +97,8 @@
 }
 
 .selected {
-    border: 3px solid #4caf50;
-    border-radius: 10px; /* Rounded corners for selected images */
+    border: 4px solid #4caf50;
+    border-radius: 10px;
 }
 
 .startBattleButton:disabled {
