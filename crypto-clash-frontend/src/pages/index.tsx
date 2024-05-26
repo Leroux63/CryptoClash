@@ -27,6 +27,8 @@ export default function Home() {
     const [completedBattles, setCompletedBattles] = useState<any[]>([]);
     const [showModal, setShowModal] = useState(false);
     const [topNFTs, setTopNFTs] = useState<NFT[]>([]);
+    const [ownerAddress, setOwnerAddress] = useState<string | null>(null);
+
 
 
     useEffect(() => {
@@ -35,6 +37,7 @@ export default function Home() {
             fetchCompletedBattles();
             fetchTokenCount(userAddress);
             fetchTopNFTs().then(setTopNFTs);
+            fetchOwnerAddress();
         }
     }, [isConnected]);
     useEffect(() => {
@@ -115,6 +118,17 @@ export default function Home() {
             setOpponents(uniqueAddresses as string[]);
         } catch (error) {
             console.error("Error fetching NFT holders:", error);
+        }
+    }
+
+    async function fetchOwnerAddress() {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const contract = new ethers.Contract(process.env.NEXT_PUBLIC_NFT_CONTRACT_ADDRESS!, NFT_ABI.abi, provider);
+        try {
+            const owner = await contract.owner();
+            setOwnerAddress(owner.toLowerCase());
+        } catch (error) {
+            console.error("Error fetching owner address:", error);
         }
     }
 
@@ -701,12 +715,14 @@ export default function Home() {
                                 ))}
                             </div>
                         </div>
-                        <div className="flex justify-center mt-4">
-                            <button onClick={rewardTopNFTs}
-                                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-                                Reward Top NFTs
-                            </button>
-                        </div>
+                        {userAddress.toLowerCase() === ownerAddress && (
+                            <div className="flex justify-center mt-4">
+                                <button onClick={rewardTopNFTs}
+                                        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                                    Reward Top NFTs
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
                 {selectedNFT && showModal && (
